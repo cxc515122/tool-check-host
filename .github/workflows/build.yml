@@ -36,6 +36,15 @@ jobs:
           name: buildozer-log
           path: buildozer_ci.log
 
+      - name: Fail if no APK
+        run: |
+          if ls bin/*.apk >/dev/null 2>&1; then
+            echo "APK OK"
+          else
+            echo "NO APK - build failed"
+            exit 1
+          fi
+
       - name: Commit build log to repo
         if: failure()
         run: |
@@ -48,15 +57,6 @@ jobs:
             git push || echo "push failed"
           else
             echo "no buildozer log found"
-          fi
-
-      - name: Fail if no APK
-        run: |
-          if ls bin/*.apk >/dev/null 2>&1; then
-            echo "APK OK"
-          else
-            echo "NO APK - build failed"
-            exit 1
           fi
 
       - name: Upload APK
