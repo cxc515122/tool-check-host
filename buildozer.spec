@@ -25,9 +25,8 @@ android.api = 33
 android.minapi = 21
 android.archs = arm64-v8a
 
-# 权限：联网 + USB 主机功能
+# 权限：联网（USB host 能力由 intent-filter/device_filter 提供，勿用 android.features）
 android.permissions = INTERNET
-android.features = android.hardware.usb.host
 
 # usbserial4a 必需：termios 白名单 + USB 插拔 intent 过滤
 android.p4a_whitelist = lib-dynload/termios.so
