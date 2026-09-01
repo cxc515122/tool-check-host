@@ -26,9 +26,27 @@ jobs:
       - name: Build APK with buildozer
         run: |
           export PATH="$PATH:$HOME/.local/bin"
-          yes | buildozer -v android debug
+          yes | buildozer -v android debug 2>&1 | tee buildozer_ci.log
+        continue-on-error: true
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buildozer-log
+          path: buildozer_ci.log
+
+      - name: Fail if no APK
+        run: |
+          if ls bin/*.apk >/dev/null 2>&1; then
+            echo "APK OK"
+          else
+            echo "NO APK - build failed"
+            exit 1
+          fi
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: toolhost-apk
