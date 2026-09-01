@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 默认接受所有USB设备；如需限定K230串口芯片(如CH340)，可改为：
+         <usb-device vendor-id="1A86" product-id="7523" /> -->
+    <usb-device />
+</resources>
