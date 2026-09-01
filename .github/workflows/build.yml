@@ -17,11 +17,16 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Install buildozer and dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y git zip unzip autoconf libtool pkg-config zlib1g-dev libncurses-dev libffi-dev libssl-dev cmake python3-pip python3-virtualenv
+          python3 -m pip install --user buildozer
+
       - name: Build APK with buildozer
-        uses: ArtemSBulgakov/buildozer-action@master
-        with:
-          python_version: "3.11"
-          buildozer_version: master
+        run: |
+          export PATH="$PATH:$HOME/.local/bin"
+          yes | buildozer -v android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
