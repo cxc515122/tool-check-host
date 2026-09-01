@@ -1,6 +1,6 @@
 [app]
-# 应用显示名称
-title = 铁路工机具清点
+# 应用显示名称（用 ASCII 避免打包时中文编码乱码；App 内部标题在代码里设中文）
+title = ToolHost
 
 # 包名（应用唯一标识，首次确定后不要再改）
 package.name = toolhost
@@ -16,9 +16,9 @@ version = 0.1
 # 依赖库（kivy + 安卓USB串口 usbserial4a/usb4a）
 requirements = python3,kivy==2.3.1,pyserial,pyjnius,usb4a,usbserial4a
 
-# 屏幕方向与全屏
+# 屏幕方向与全屏（fullscreen=1 强制全屏，修复窗口只占部分屏幕导致显示不全+触摸错位）
 orientation = portrait
-fullscreen = 0
+fullscreen = 1
 
 # Android 目标/最低版本与 CPU 架构
 android.api = 33
