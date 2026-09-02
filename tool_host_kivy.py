@@ -206,6 +206,78 @@ def receive_data_loop():
                 except Exception:
                     traceback.print_exc()
     rx_loop_running = False
+
+# ====================== USB 热插拔支持（安卓） ======================
+def _hotplug_poll_loop():
+    """后台轮询USB设备插拔：打开App后再插USB，能自动请求授权并打开串口"""
+    global uart_handle, rx_loop_running
+    if not HAS_ANDROID_USB:
+        return
+    try:
+        dev_list = usb.get_usb_device_list()
+        had_device = bool(dev_list)
+    except Exception:
+        had_device = False
+    while True:
+        try:
+            dev_list = usb.get_usb_device_list()
+            present = bool(dev_list)
+            if present and not had_device:
+                had_device = True
+                Clock.schedule_once(lambda dt, d=dev_list[0]: _hotplug_attach(d), 0)
+            elif not present and had_device:
+                had_device = False
+                Clock.schedule_once(lambda dt: _hotplug_detach(), 0)
+        except Exception:
+            traceback.print_exc()
+        time.sleep(1.5)
+
+@mainthread
+def _hotplug_attach(dev):
+    """USB设备插入：主线程请求授权（后台线程请求不弹框），授权后打开串口"""
+    global rx_loop_running
+    app = App.get_running_app()
+    root = app.root if app else None
+    if root:
+        root.state_label.text = "串口状态：检测到USB设备，请求授权..."
+    def worker():
+        try:
+            # 等待用户授权（最多5秒），授权后打开串口
+            if not usb.has_usb_permission(dev):
+                usb.request_usb_permission(dev)
+                for _ in range(50):
+                    time.sleep(0.1)
+                    if usb.has_usb_permission(dev):
+                        break
+            ok, tip = open_uart()
+            if ok and not rx_loop_running:
+                threading.Thread(target=receive_data_loop, daemon=True).start()
+            Clock.schedule_once(lambda dt, o=ok, t=tip: _hotplug_result(o, t), 0)
+        except Exception:
+            traceback.print_exc()
+    threading.Thread(target=worker, daemon=True).start()
+
+@mainthread
+def _hotplug_result(ok, tip):
+    app = App.get_running_app()
+    if app and app.root:
+        app.root.state_label.text = "串口状态：%s" % tip
+
+@mainthread
+def _hotplug_detach():
+    """USB设备拔出：关闭串口，等待下次插入"""
+    global uart_handle, rx_loop_running
+    rx_loop_running = False
+    if uart_handle and uart_handle.is_open:
+        try:
+            uart_handle.close()
+        except Exception:
+            pass
+    uart_handle = None
+    app = App.get_running_app()
+    if app and app.root:
+        app.root.state_label.text = "串口状态：USB已拔出，重新插入可自动连接"
+
 # -------------------------- K230消息处理 --------------------------
 @mainthread
 def handle_k230_message(msg):
@@ -288,6 +360,9 @@ class MainUI(BoxLayout):
                 traceback.print_exc()
         # UI 完全就绪后再初始化串口（后台线程只做阻塞打开，不碰Clock）
         Clock.schedule_once(self._start_serial, 0.2)
+        # 安卓：启动USB热插拔监听（打开App后再插USB也能自动授权连接）
+        if HAS_ANDROID_USB:
+            threading.Thread(target=_hotplug_poll_loop, daemon=True).start()
 
     # ---------- 左侧：手动配置清点清单 ----------
     def _build_left(self):
@@ -400,7 +475,7 @@ class MainUI(BoxLayout):
         # 同步整份清单到K230（屏幕全量显示）；默认全部开启识别（K230全量清点），不设优先
         sync_list_to_k230()
         if HAS_SERIAL:
-            refresh_ui_text("已添加：%s × %d，全部工具已开启识别" % (tool, cnt))
+            refresh_ui_text("✅ 全部识别中：对准任一工具拍摄，达标自动锁定" )
         else:
             refresh_ui_text("已添加：%s × %d（串口库不可用，未下发）" % (tool, cnt))
 
