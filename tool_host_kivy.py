@@ -96,11 +96,25 @@ from kivy.clock import Clock, mainthread
 from kivy.uix.popup import Popup
 from kivy.core.window import Window
 from kivy.utils import platform
+from kivy.metrics import dp, sp
+
+# ===================== 界面字号与尺寸（统一用 dp，高DPI手机自动放大） =====================
+# 字号（sp ≈ dp 值，手机上自动按密度缩放）
+FS_TITLE = sp(28)     # 页面主标题
+FS_SECTION = sp(23)   # 区块小标题
+FS_BODY = sp(21)      # 正文/按钮
+FS_STATUS = sp(25)    # 状态提示（醒目）
+FS_ROW = sp(22)       # 清单行文字
+# 行高 / 间距 / 内边距
+ROW_H_CHECK = dp(82)  # 已选清单行高
+ROW_H_PROG = dp(70)   # 进度总览行高
+SPACING = dp(12)      # 块间距
+PADDING = dp(16)      # 页面内边距
 
 # 深灰底色；仅电脑调试时固定窗口尺寸（安卓由 fullscreen=1 全屏自适应，否则会只占屏幕一部分）
 Window.clearcolor = (0.13, 0.14, 0.16, 1)
 if platform != "android":
-    Window.size = (960, 680)
+    Window.size = (1080, 2340)   # 电脑调试用手机比例，便于预览真实布局
 
 uart_handle = None
 rx_loop_running = False
@@ -208,8 +222,8 @@ def handle_k230_message(msg):
                 global_check.all_complete = True
                 pop_kwargs = {
                     "title": "清点完成",
-                    "content": Label(**font_opts(text="全部工机具识别锁定完毕！", font_size=16)),
-                    "size_hint": (0.7, 0.4),
+                    "content": Label(**font_opts(text="全部工机具识别锁定完毕！", font_size=FS_BODY)),
+                    "size_hint": (0.75, 0.4),
                 }
                 if HAS_CN_FONT:
                     pop_kwargs["title_font"] = "CNFont"
@@ -246,6 +260,7 @@ class CNSpinnerOption(SpinnerOption):
     def __init__(self, **kwargs):
         if HAS_CN_FONT:
             kwargs.setdefault("font_name", "CNFont")
+        kwargs.setdefault("font_size", FS_BODY)
         super().__init__(**kwargs)
 
 # -------------------------- UI界面布局 --------------------------
@@ -253,8 +268,8 @@ class MainUI(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "horizontal"
-        self.spacing = 8
-        self.padding = 10
+        self.spacing = SPACING
+        self.padding = PADDING
         self._build_left()
         self._build_right()
         # 安卓：必须在主线程请求USB设备授权（后台线程调用不会弹授权框）
@@ -272,21 +287,21 @@ class MainUI(BoxLayout):
 
     # ---------- 左侧：手动配置清点清单 ----------
     def _build_left(self):
-        left_area = BoxLayout(orientation="vertical", size_hint=(0.34, 1), spacing=6)
+        left_area = BoxLayout(orientation="vertical", size_hint=(0.36, 1), spacing=SPACING)
         left_area.add_widget(Label(**font_opts(
-            text="配置清点清单", font_size=14, size_hint_y=0.06)))
+            text="配置清点清单", font_size=FS_TITLE, bold=True, size_hint_y=0.07)))
         # 选择行：工具下拉 + 数量 + 添加
-        cfg_row = BoxLayout(orientation="horizontal", size_hint_y=0.1, spacing=4)
+        cfg_row = BoxLayout(orientation="horizontal", size_hint_y=0.11, spacing=dp(8))
         self.tool_spinner = Spinner(
             text="选择工具", values=list(TOOL_DICT.values()),
-            size_hint_x=0.5, font_size=12,
+            size_hint_x=0.5, font_size=FS_BODY,
             option_cls=CNSpinnerOption, **font_opts())
         self.cnt_input = TextInput(
             text="1", input_filter="int", multiline=False,
-            size_hint_x=0.2, halign="center", font_size=13,
+            size_hint_x=0.18, halign="center", font_size=FS_BODY,
             hint_text="数量", **font_opts())
         btn_add = Button(**font_opts(
-            text="添加", font_size=13, size_hint_x=0.3,
+            text="添加", font_size=FS_BODY, size_hint_x=0.32,
             background_color=(0.2, 0.5, 0.85, 1)))
         btn_add.bind(on_press=self.on_add_tool)
         cfg_row.add_widget(self.tool_spinner)
@@ -295,16 +310,16 @@ class MainUI(BoxLayout):
         left_area.add_widget(cfg_row)
         # 已添加清单
         left_area.add_widget(Label(**font_opts(
-            text="已选清单（点工具下发识别）", font_size=12, size_hint_y=0.06)))
+            text="已选清单（点工具下发识别）", font_size=FS_SECTION, bold=True, size_hint_y=0.06)))
         self.button_map = {}
         self.count_map = {}
-        self.checklist_grid = GridLayout(cols=1, size_hint_y=None, spacing=5)
+        self.checklist_grid = GridLayout(cols=1, size_hint_y=None, spacing=dp(8))
         self.checklist_grid.bind(minimum_height=self.checklist_grid.setter("height"))
         self.tool_scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
         self.tool_scroll.add_widget(self.checklist_grid)
         left_area.add_widget(self.tool_scroll)
         btn_reset = Button(**font_opts(
-            text="重置全部清点", font_size=14, size_hint_y=0.12,
+            text="重置全部清点", font_size=FS_BODY, bold=True, size_hint_y=0.12,
             background_color=(0.85, 0.2, 0.2, 1)))
         btn_reset.bind(on_press=self.reset_all_record)
         left_area.add_widget(btn_reset)
@@ -312,16 +327,18 @@ class MainUI(BoxLayout):
 
     # ---------- 右侧：清点进度总览（只显示已添加工具） ----------
     def _build_right(self):
-        right_area = BoxLayout(orientation="vertical", size_hint=(0.66, 1), spacing=8)
+        right_area = BoxLayout(orientation="vertical", size_hint=(0.64, 1), spacing=SPACING)
         right_area.add_widget(Label(**font_opts(
-            text="清点进度总览", font_size=15, size_hint_y=0.1)))
-        self.progress_grid = GridLayout(cols=2, size_hint_y=None, spacing=4, row_default_height=30)
+            text="清点进度总览", font_size=FS_TITLE, bold=True, size_hint_y=0.1)))
+        self.progress_grid = GridLayout(
+            cols=2, size_hint_y=None, spacing=dp(10),
+            row_default_height=ROW_H_PROG)
         self.progress_grid.bind(minimum_height=self.progress_grid.setter("height"))
         self.progress_map = {}
         right_area.add_widget(self.progress_grid)
         self.state_label = Label(**font_opts(
             text="正在初始化串口，连接K230设备...",
-            font_size=14, color=(1, 1, 1, 1), size_hint_y=0.12))
+            font_size=FS_STATUS, bold=True, color=(1, 1, 0.9, 1), size_hint_y=0.12))
         right_area.add_widget(self.state_label)
         self.add_widget(right_area)
 
@@ -372,13 +389,13 @@ class MainUI(BoxLayout):
         self.button_map.clear()
         self.count_map.clear()
         for tool, cnt in global_check.check_list.items():
-            row = BoxLayout(orientation="horizontal", size_hint_y=None, height=44, spacing=4)
-            btn = Button(**font_opts(text=tool, font_size=13))
+            row = BoxLayout(orientation="horizontal", size_hint_y=None, height=ROW_H_CHECK, spacing=dp(6))
+            btn = Button(**font_opts(text=tool, font_size=FS_ROW))
             btn.bind(on_press=self.click_tool_btn)
             row.add_widget(btn)
-            cnt_lab = Label(**font_opts(text="×%d" % cnt, font_size=13, size_hint_x=0.18))
+            cnt_lab = Label(**font_opts(text="×%d" % cnt, font_size=FS_ROW, size_hint_x=0.16))
             row.add_widget(cnt_lab)
-            del_btn = Button(text="✕", font_size=13, size_hint_x=0.14,
+            del_btn = Button(text="✕", font_size=FS_ROW, size_hint_x=0.13,
                              background_color=(0.6, 0.15, 0.15, 1))
             del_btn.bind(on_press=lambda w, t=tool: self.remove_from_checklist(t))
             row.add_widget(del_btn)
@@ -390,10 +407,10 @@ class MainUI(BoxLayout):
         self.progress_grid.clear_widgets()
         self.progress_map = {}
         for tool, cnt in global_check.check_list.items():
-            n_lab = Label(**font_opts(text=tool, font_size=13, halign="left"))
+            n_lab = Label(**font_opts(text=tool, font_size=FS_ROW, halign="left"))
             n_lab.bind(size=lambda w, s: setattr(w, "text_size", s))
             st_lab = Label(**font_opts(
-                text="待清点(需%d个)" % cnt, font_size=13, color=(0.8, 0.8, 0.8, 1)))
+                text="待清点(需%d个)" % cnt, font_size=FS_ROW, color=(0.8, 0.8, 0.8, 1)))
             self.progress_grid.add_widget(n_lab)
             self.progress_grid.add_widget(st_lab)
             self.progress_map[tool] = st_lab
@@ -476,10 +493,10 @@ class ToolHostApp(App):
             traceback.print_exc()
             err_box = BoxLayout(orientation="vertical", padding=20, spacing=10)
             err_box.add_widget(Label(**font_opts(
-                text="界面初始化失败，请查看命令行错误信息", font_size=18,
+                text="界面初始化失败，请查看命令行错误信息", font_size=FS_TITLE,
                 color=(1, 0.3, 0.3, 1))))
             err_text = Label(**font_opts(
-                text=traceback.format_exc()[-800:], font_size=12,
+                text=traceback.format_exc()[-800:], font_size=FS_BODY,
                 halign="left", valign="top", color=(1, 0.9, 0.9, 1)))
             err_text.bind(size=lambda w, s: setattr(w, "text_size", s))
             err_box.add_widget(err_text)
