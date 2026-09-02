@@ -99,19 +99,20 @@ from kivy.utils import platform
 from kivy.metrics import dp, sp
 
 # ===================== 界面字号与尺寸（统一用 dp，高DPI手机自动放大） =====================
-# 字号（sp ≈ dp 值，手机上自动按密度缩放）——参考 Mifare Classic Tool 清晰大字
-FS_TITLE = sp(32)     # 页面主标题
-FS_SECTION = sp(27)   # 区块小标题
-FS_BODY = sp(24)      # 正文/按钮
-FS_STATUS = sp(29)    # 状态提示（醒目）
-FS_ROW = sp(26)       # 清单行文字
-FS_NUM = sp(28)       # 数量 + - 按钮
-FS_PROG = sp(21)      # 右侧进度区文字（列宽有限，略小于清单行）
-# 行高 / 间距 / 内边距
-ROW_H_CHECK = dp(96)  # 已选清单行高
-ROW_H_PROG = dp(78)   # 进度总览行高
-SPACING = dp(14)      # 块间距
-PADDING = dp(18)      # 页面内边距
+# 字号：够大清晰但不破坏布局（标题/按钮固定尺寸，文字自适应）
+FS_TITLE = sp(26)     # 页面主标题
+FS_SECTION = sp(22)   # 区块小标题
+FS_BODY = sp(20)      # 正文/按钮
+FS_STATUS = sp(24)    # 状态提示（醒目）
+FS_ROW = sp(21)       # 清单行文字
+FS_NUM = sp(24)       # 数量 + - 按钮
+FS_PROG = sp(19)      # 右侧进度区文字
+# 行高 / 间距 / 内边距（固定尺寸，文字在框内自适应）
+ROW_H_CHECK = dp(80)  # 已选清单行高（固定）
+ROW_H_PROG = dp(70)   # 进度总览行高（固定）
+H_CFG_ROW = dp(86)    # 选择操作行高（固定：工具下拉/数量/-+/添加）
+SPACING = dp(12)      # 块间距
+PADDING = dp(14)      # 页面内边距
 
 # 深灰底色；仅电脑调试时固定窗口尺寸（安卓由 fullscreen=1 全屏自适应，否则会只占屏幕一部分）
 Window.clearcolor = (0.13, 0.14, 0.16, 1)
@@ -232,8 +233,9 @@ def handle_k230_message(msg):
                 pop_win = Popup(**pop_kwargs)
                 pop_win.open()
             if root:
-                root.update_progress()
-            refresh_ui_text("✅【%s】识别锁定，请选择下一项工具" % match_tool)
+                root.update_progress()   # 全部完成时状态栏自动变绿"全部工具清点完毕"
+            if not global_check.all_complete:
+                refresh_ui_text("✅【%s】识别锁定，请选择下一项工具" % match_tool)
         elif status_type == "ready":
             if root:
                 root.update_progress()
@@ -292,26 +294,27 @@ class MainUI(BoxLayout):
         left_area = BoxLayout(orientation="vertical", size_hint=(0.46, 1), spacing=SPACING)
         left_area.add_widget(Label(**font_opts(
             text="配置清点清单", font_size=FS_TITLE, bold=True, size_hint_y=0.07)))
-        # 选择行：工具下拉 + 数量(-/+) + 添加
-        cfg_row = BoxLayout(orientation="horizontal", size_hint_y=0.13, spacing=dp(6))
+        # 选择行：工具下拉 + 数量(-/+) + 添加（整行固定高度，元素等高管）
+        cfg_row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                            height=H_CFG_ROW, spacing=dp(6))
         self.tool_spinner = Spinner(
             text="选择工具", values=list(TOOL_DICT.values()),
-            size_hint_x=0.44, font_size=FS_BODY,
+            size_hint_x=0.44, font_size=FS_BODY, size_hint_y=1,
             option_cls=CNSpinnerOption, **font_opts())
         btn_minus = Button(
-            text="－", font_size=FS_NUM, bold=True, size_hint_x=0.13,
+            text="－", font_size=FS_NUM, bold=True, size_hint_x=0.13, size_hint_y=1,
             background_color=(0.35, 0.35, 0.42, 1))
         btn_minus.bind(on_press=lambda w: self._change_count(-1))
         self.cnt_input = TextInput(
             text="1", input_filter="int", multiline=False,
-            size_hint_x=0.16, halign="center", font_size=FS_NUM,
+            size_hint_x=0.16, size_hint_y=1, halign="center", font_size=FS_NUM,
             hint_text="数量", **font_opts())
         btn_plus = Button(
-            text="＋", font_size=FS_NUM, bold=True, size_hint_x=0.13,
+            text="＋", font_size=FS_NUM, bold=True, size_hint_x=0.13, size_hint_y=1,
             background_color=(0.35, 0.35, 0.42, 1))
         btn_plus.bind(on_press=lambda w: self._change_count(1))
         btn_add = Button(**font_opts(
-            text="添加", font_size=FS_BODY, bold=True, size_hint_x=0.14,
+            text="添加", font_size=FS_BODY, bold=True, size_hint_x=0.14, size_hint_y=1,
             background_color=(0.2, 0.5, 0.85, 1)))
         btn_add.bind(on_press=self.on_add_tool)
         cfg_row.add_widget(self.tool_spinner)
@@ -444,7 +447,7 @@ class MainUI(BoxLayout):
             n_lab.size_hint_x = 0.55
             st_lab = Label(**font_opts(
                 text="待清点×%d" % cnt, font_size=FS_PROG,
-                color=(0.8, 0.8, 0.8, 1), size_hint_x=0.45))
+                color=(1, 0.3, 0.3, 1), size_hint_x=0.45))
             row.add_widget(n_lab)
             row.add_widget(st_lab)
             self.progress_grid.add_widget(row)
@@ -499,6 +502,14 @@ class MainUI(BoxLayout):
 
     # ---------- 刷新左右两侧状态 ----------
     def update_progress(self):
+        # 与K230屏幕一致：未清点红色、识别中黄色、已锁定绿色、全部完毕绿色
+        done_all = bool(global_check.check_list) and len(global_check.finished) == len(global_check.check_list)
+        if done_all:
+            global_check.all_complete = True
+            self.state_label.text = "✅ 全部工具清点完毕"
+            self.state_label.color = (0.2, 1, 0.3, 1)
+        elif global_check.check_list:
+            self.state_label.color = (1, 1, 0.9, 1)
         for tool in global_check.check_list:
             need = global_check.check_list[tool]
             st = self.progress_map.get(tool)
@@ -515,7 +526,7 @@ class MainUI(BoxLayout):
                 btn.background_color = (0.8, 0.7, 0.1, 1)
             else:
                 st.text = "待清点×%d" % need
-                st.color = (0.8, 0.8, 0.8, 1)
+                st.color = (1, 0.3, 0.3, 1)   # 未清点：红色
                 btn.background_color = (0.2, 0.2, 0.2, 1)
 # -------------------------- 应用入口 --------------------------
 class ToolHostApp(App):
