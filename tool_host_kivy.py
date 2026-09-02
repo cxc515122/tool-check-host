@@ -95,10 +95,12 @@ from kivy.uix.spinner import Spinner, SpinnerOption
 from kivy.clock import Clock, mainthread
 from kivy.uix.popup import Popup
 from kivy.core.window import Window
+from kivy.utils import platform
 
-# 深灰底色 + 合适窗口，避免默认纯黑小窗
+# 深灰底色；仅电脑调试时固定窗口尺寸（安卓由 fullscreen=1 全屏自适应，否则会只占屏幕一部分）
 Window.clearcolor = (0.13, 0.14, 0.16, 1)
-Window.size = (960, 680)
+if platform != "android":
+    Window.size = (960, 680)
 
 uart_handle = None
 rx_loop_running = False
