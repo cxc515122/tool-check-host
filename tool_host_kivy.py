@@ -98,21 +98,21 @@ from kivy.core.window import Window
 from kivy.utils import platform
 from kivy.metrics import dp, sp
 
-# ===================== 界面字号与尺寸（统一用 dp，高DPI手机自动放大） =====================
-# 字号：够大清晰但不破坏布局（标题/按钮固定尺寸，文字自适应）
-FS_TITLE = sp(26)     # 页面主标题
-FS_SECTION = sp(22)   # 区块小标题
-FS_BODY = sp(20)      # 正文/按钮
-FS_STATUS = sp(24)    # 状态提示（醒目）
-FS_ROW = sp(21)       # 清单行文字
-FS_NUM = sp(24)       # 数量 + - 按钮
-FS_PROG = sp(19)      # 右侧进度区文字
+# ===================== 界面字号与尺寸（统一用 dp，不随系统字体缩放，真机高DPI也不溢出） =====================
+FS_TITLE = dp(22)     # 页面主标题
+FS_SECTION = dp(19)   # 区块小标题
+FS_BODY = dp(18)      # 正文/按钮
+FS_STATUS = dp(19)    # 状态提示（醒目）
+FS_ROW = dp(18)       # 清单行文字
+FS_NUM = dp(20)       # 数量 + - 按钮
+FS_PROG = dp(17)      # 右侧进度区文字
 # 行高 / 间距 / 内边距（固定尺寸，文字在框内自适应）
-ROW_H_CHECK = dp(80)  # 已选清单行高（固定）
-ROW_H_PROG = dp(70)   # 进度总览行高（固定）
-H_CFG_ROW = dp(86)    # 选择操作行高（固定：工具下拉/数量/-+/添加）
-SPACING = dp(12)      # 块间距
-PADDING = dp(14)      # 页面内边距
+ROW_H_CHECK = dp(60)  # 已选清单行高（固定）
+ROW_H_PROG = dp(52)   # 进度总览行高（固定）
+H_CFG_ROW = dp(62)    # 选择操作行高（固定：工具下拉/数量/-+/添加）
+H_STATE = dp(64)      # 底部状态栏高度（固定）
+SPACING = dp(10)      # 块间距
+PADDING = dp(12)      # 页面内边距
 
 # 深灰底色；仅电脑调试时固定窗口尺寸（安卓由 fullscreen=1 全屏自适应，否则会只占屏幕一部分）
 Window.clearcolor = (0.13, 0.14, 0.16, 1)
@@ -292,11 +292,13 @@ class MainUI(BoxLayout):
     # ---------- 左侧：手动配置清点清单 ----------
     def _build_left(self):
         left_area = BoxLayout(orientation="vertical", size_hint=(0.46, 1), spacing=SPACING)
-        left_area.add_widget(Label(**font_opts(
-            text="配置清点清单", font_size=FS_TITLE, bold=True, size_hint_y=0.07)))
+        t1 = Label(**font_opts(text="清点清单", font_size=FS_TITLE, bold=True,
+                               halign="center", valign="middle", size_hint_y=0.06))
+        t1.bind(size=lambda w, s: setattr(w, "text_size", s))
+        left_area.add_widget(t1)
         # 选择行：工具下拉 + 数量(-/+) + 添加（整行固定高度，元素等高管）
         cfg_row = BoxLayout(orientation="horizontal", size_hint_y=None,
-                            height=H_CFG_ROW, spacing=dp(6))
+                            height=H_CFG_ROW, spacing=dp(5))
         self.tool_spinner = Spinner(
             text="选择工具", values=list(TOOL_DICT.values()),
             size_hint_x=0.44, font_size=FS_BODY, size_hint_y=1,
@@ -323,18 +325,20 @@ class MainUI(BoxLayout):
         cfg_row.add_widget(btn_plus)
         cfg_row.add_widget(btn_add)
         left_area.add_widget(cfg_row)
-        # 已添加清单
-        left_area.add_widget(Label(**font_opts(
-            text="已选清单（点选下发）", font_size=FS_SECTION, bold=True, size_hint_y=0.06)))
+        # 已添加清单（点选可优先识别）
+        t2 = Label(**font_opts(text="已选清单（点选优先识别）", font_size=FS_SECTION, bold=True,
+                               halign="center", valign="middle", size_hint_y=0.05))
+        t2.bind(size=lambda w, s: setattr(w, "text_size", s))
+        left_area.add_widget(t2)
         self.button_map = {}
         self.count_map = {}
-        self.checklist_grid = GridLayout(cols=1, size_hint_y=None, spacing=dp(8))
+        self.checklist_grid = GridLayout(cols=1, size_hint_y=None, spacing=dp(6))
         self.checklist_grid.bind(minimum_height=self.checklist_grid.setter("height"))
         self.tool_scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
         self.tool_scroll.add_widget(self.checklist_grid)
         left_area.add_widget(self.tool_scroll)
         btn_reset = Button(**font_opts(
-            text="重置全部清点", font_size=FS_BODY, bold=True, size_hint_y=0.15,
+            text="重置全部清点", font_size=FS_BODY, bold=True, size_hint_y=0.13,
             background_color=(0.85, 0.2, 0.2, 1)))
         btn_reset.bind(on_press=self.reset_all_record)
         left_area.add_widget(btn_reset)
@@ -343,9 +347,11 @@ class MainUI(BoxLayout):
     # ---------- 右侧：清点进度总览（只显示已添加工具） ----------
     def _build_right(self):
         right_area = BoxLayout(orientation="vertical", size_hint=(0.54, 1), spacing=SPACING)
-        right_area.add_widget(Label(**font_opts(
-            text="清点进度总览", font_size=FS_TITLE, bold=True, size_hint_y=0.1)))
-        self.progress_grid = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
+        t3 = Label(**font_opts(text="清点进度总览", font_size=FS_TITLE, bold=True,
+                               halign="center", valign="middle", size_hint_y=0.08))
+        t3.bind(size=lambda w, s: setattr(w, "text_size", s))
+        right_area.add_widget(t3)
+        self.progress_grid = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(6))
         self.progress_grid.bind(minimum_height=self.progress_grid.setter("height"))
         self.progress_map = {}
         # 进度总览放进 ScrollView，工具多时可滑动查看
@@ -354,8 +360,8 @@ class MainUI(BoxLayout):
         right_area.add_widget(self.progress_scroll)
         self.state_label = Label(**font_opts(
             text="正在初始化串口，连接K230设备...",
-            font_size=FS_STATUS, bold=True, color=(1, 1, 0.9, 1), size_hint_y=0.2,
-            halign="center", valign="middle"))
+            font_size=FS_STATUS, bold=True, color=(1, 1, 0.9, 1), size_hint_y=None,
+            height=H_STATE, halign="center", valign="middle"))
         self.state_label.bind(size=lambda w, s: setattr(w, "text_size", s))
         right_area.add_widget(self.state_label)
         self.add_widget(right_area)
@@ -391,11 +397,10 @@ class MainUI(BoxLayout):
         self.rebuild_checklist_rows()
         self.rebuild_progress()
         self.update_progress()
-        # 同步整份清单到K230（屏幕全量显示），并自动开始识别刚添加的工具
+        # 同步整份清单到K230（屏幕全量显示）；默认全部开启识别（K230全量清点），不设优先
         sync_list_to_k230()
         if HAS_SERIAL:
-            send_cmd_to_k230({"cmd": "set_target", "tool": tool, "count": cnt})
-            refresh_ui_text("已添加：%s × %d，K230清单已同步，对准工具拍摄" % (tool, cnt))
+            refresh_ui_text("已添加：%s × %d，全部工具已开启识别" % (tool, cnt))
         else:
             refresh_ui_text("已添加：%s × %d（串口库不可用，未下发）" % (tool, cnt))
 
@@ -416,12 +421,12 @@ class MainUI(BoxLayout):
         self.button_map.clear()
         self.count_map.clear()
         for tool, cnt in global_check.check_list.items():
-            row = BoxLayout(orientation="horizontal", size_hint_y=None, height=ROW_H_CHECK, spacing=dp(8))
-            # 工具名按钮：文字自动换行，避免长名溢出到数量标签
+            row = BoxLayout(orientation="horizontal", size_hint_y=None, height=ROW_H_CHECK, spacing=dp(6))
+            # 工具名按钮：文字限制在按钮内换行居中，不撑高不溢出
             btn = Button(**font_opts(text=tool, font_size=FS_ROW))
-            btn.bind(size=lambda w, s: setattr(w, "text_size", (s[0] - dp(8), None)))
             btn.halign = "center"
             btn.valign = "middle"
+            btn.bind(size=lambda w, s: setattr(w, "text_size", (s[0] - dp(6), s[1] - dp(2))))
             btn.bind(on_press=self.click_tool_btn)
             row.add_widget(btn)
             cnt_lab = Label(**font_opts(text="×%d" % cnt, font_size=FS_ROW, size_hint_x=0.14))
@@ -442,8 +447,8 @@ class MainUI(BoxLayout):
             # 每行 = 名称(0.55) + 状态(0.45)，横排不挤压
             row = BoxLayout(orientation="horizontal", size_hint_y=None,
                             height=ROW_H_PROG, spacing=dp(6))
-            n_lab = Label(**font_opts(text=tool, font_size=FS_PROG, halign="left"))
-            n_lab.bind(size=lambda w, s: setattr(w, "text_size", (s[0] - dp(4), None)))
+            n_lab = Label(**font_opts(text=tool, font_size=FS_PROG, halign="left", valign="middle"))
+            n_lab.bind(size=lambda w, s: setattr(w, "text_size", (s[0] - dp(4), s[1] - dp(2))))
             n_lab.size_hint_x = 0.55
             st_lab = Label(**font_opts(
                 text="待清点×%d" % cnt, font_size=FS_PROG,
@@ -472,18 +477,45 @@ class MainUI(BoxLayout):
         if select_tool not in global_check.check_list:
             return
         if select_tool in global_check.finished:
-            refresh_ui_text("⚠️ %s 已识别锁定，无需重复操作" % select_tool)
+            refresh_ui_text("✅ %s 已识别锁定" % select_tool)
             return
         if global_check.all_complete:
             refresh_ui_text("⚠️ 所有工具已清点完成，请点击重置")
             return
         target_cnt = global_check.check_list[select_tool]
+        # 弹窗确认：是否优先识别该项
+        content = BoxLayout(orientation="vertical", padding=dp(8), spacing=dp(8))
+        content.add_widget(Label(**font_opts(
+            text="是否优先识别：\n%s × %d" % (select_tool, target_cnt),
+            font_size=FS_BODY, halign="center", valign="middle")))
+        btn_row = BoxLayout(orientation="horizontal", spacing=dp(10), size_hint_y=0.4)
+        btn_yes = Button(**font_opts(text="优先识别", font_size=FS_BODY, bold=True,
+                                     background_color=(0.2, 0.6, 0.3, 1)))
+        btn_no = Button(**font_opts(text="继续全量", font_size=FS_BODY,
+                                    background_color=(0.4, 0.4, 0.45, 1)))
+        btn_row.add_widget(btn_yes)
+        btn_row.add_widget(btn_no)
+        content.add_widget(btn_row)
+        pop_kwargs = {
+            "title": "清点模式",
+            "content": content,
+            "size_hint": (0.8, 0.42),
+        }
+        if HAS_CN_FONT:
+            pop_kwargs["title_font"] = "CNFont"
+        pop = Popup(**pop_kwargs)
+        btn_yes.bind(on_press=lambda w: (self._prioritize_tool(select_tool, target_cnt), pop.dismiss()))
+        btn_no.bind(on_press=lambda w: (refresh_ui_text("继续全量识别：%s" % select_tool), pop.dismiss()))
+        pop.open()
+
+    def _prioritize_tool(self, select_tool, target_cnt):
+        """优先识别：下发 set_target 给 K230 锁定当前识别目标"""
         global_check.target_now = select_tool
         global_check.target_count = target_cnt
         self.update_progress()
         if HAS_SERIAL:
             send_cmd_to_k230({"cmd": "set_target", "tool": select_tool, "count": target_cnt})
-            refresh_ui_text("已下发：%s × %d，对准工具拍摄" % (select_tool, target_cnt))
+            refresh_ui_text("已优先：%s × %d，对准工具拍摄" % (select_tool, target_cnt))
         else:
             refresh_ui_text("⚠️ 串口库不可用，无法下发指令")
 
