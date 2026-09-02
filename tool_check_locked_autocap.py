@@ -453,7 +453,10 @@ def handle_json_cmd(obj):
         if num is None:
             uart_json({"status": "error", "msg": "未知工具: %s" % tool})
             return
-        # 仅切换当前识别目标，不清空整份清单（屏幕仍显示全部已选工具）
+        # 点选优先识别：先单项重置该工具锁定（已锁定的项重新识别），再设为目标
+        if num in state.locked_count:
+            del state.locked_count[num]
+            uart_print("联动: 单项重置锁定 %s" % tool)
         state.current_target = num
         try:
             count = int(obj.get("count", 1))

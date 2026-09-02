@@ -574,17 +574,21 @@ class MainUI(BoxLayout):
         select_tool = instance.text
         if select_tool not in global_check.check_list:
             return
-        if select_tool in global_check.finished:
-            refresh_ui_text("✅ %s 已识别锁定" % select_tool)
-            return
-        if global_check.all_complete:
-            refresh_ui_text("⚠️ 所有工具已清点完成，请点击重置")
-            return
         target_cnt = global_check.check_list[select_tool]
-        # 弹窗确认：是否优先识别该项
+        if select_tool in global_check.finished:
+            # 已锁定项也允许重新识别：弹窗提示"单项重置"
+            is_relock = True
+            prompt = "该项已锁定，是否重置并优先识别：\n%s × %d" % (select_tool, target_cnt)
+        else:
+            is_relock = False
+            if global_check.all_complete:
+                refresh_ui_text("⚠️ 所有工具已清点完成，请点击重置")
+                return
+            prompt = "是否优先识别：\n%s × %d" % (select_tool, target_cnt)
+        # 弹窗确认：是否优先识别该项（已锁定项=单项重置后重新识别）
         content = BoxLayout(orientation="vertical", padding=dp(8), spacing=dp(8))
         content.add_widget(Label(**font_opts(
-            text="是否优先识别：\n%s × %d" % (select_tool, target_cnt),
+            text=prompt,
             font_size=FS_BODY, halign="center", valign="middle")))
         btn_row = BoxLayout(orientation="horizontal", spacing=dp(10), size_hint_y=0.4)
         btn_yes = Button(**font_opts(text="优先识别", font_size=FS_BODY, bold=True,
@@ -607,9 +611,13 @@ class MainUI(BoxLayout):
         pop.open()
 
     def _prioritize_tool(self, select_tool, target_cnt):
-        """优先识别：下发 set_target 给 K230 锁定当前识别目标"""
+        """优先识别：下发 set_target 给 K230（K230会单项重置该项锁定后重新识别）"""
         global_check.target_now = select_tool
         global_check.target_count = target_cnt
+        # 本地同步单项重置：若该项已锁定，先移除锁定状态，等待重新识别
+        if select_tool in global_check.finished:
+            global_check.finished.discard(select_tool)
+        global_check.all_complete = False
         self.update_progress()
         if HAS_SERIAL:
             send_cmd_to_k230({"cmd": "set_target", "tool": select_tool, "count": target_cnt})
