@@ -99,17 +99,19 @@ from kivy.utils import platform
 from kivy.metrics import dp, sp
 
 # ===================== 界面字号与尺寸（统一用 dp，高DPI手机自动放大） =====================
-# 字号（sp ≈ dp 值，手机上自动按密度缩放）
-FS_TITLE = sp(28)     # 页面主标题
-FS_SECTION = sp(23)   # 区块小标题
-FS_BODY = sp(21)      # 正文/按钮
-FS_STATUS = sp(25)    # 状态提示（醒目）
-FS_ROW = sp(22)       # 清单行文字
+# 字号（sp ≈ dp 值，手机上自动按密度缩放）——参考 Mifare Classic Tool 清晰大字
+FS_TITLE = sp(32)     # 页面主标题
+FS_SECTION = sp(27)   # 区块小标题
+FS_BODY = sp(24)      # 正文/按钮
+FS_STATUS = sp(29)    # 状态提示（醒目）
+FS_ROW = sp(26)       # 清单行文字
+FS_NUM = sp(28)       # 数量 + - 按钮
+FS_PROG = sp(21)      # 右侧进度区文字（列宽有限，略小于清单行）
 # 行高 / 间距 / 内边距
-ROW_H_CHECK = dp(82)  # 已选清单行高
-ROW_H_PROG = dp(70)   # 进度总览行高
-SPACING = dp(12)      # 块间距
-PADDING = dp(16)      # 页面内边距
+ROW_H_CHECK = dp(96)  # 已选清单行高
+ROW_H_PROG = dp(78)   # 进度总览行高
+SPACING = dp(14)      # 块间距
+PADDING = dp(18)      # 页面内边距
 
 # 深灰底色；仅电脑调试时固定窗口尺寸（安卓由 fullscreen=1 全屏自适应，否则会只占屏幕一部分）
 Window.clearcolor = (0.13, 0.14, 0.16, 1)
@@ -290,22 +292,32 @@ class MainUI(BoxLayout):
         left_area = BoxLayout(orientation="vertical", size_hint=(0.46, 1), spacing=SPACING)
         left_area.add_widget(Label(**font_opts(
             text="配置清点清单", font_size=FS_TITLE, bold=True, size_hint_y=0.07)))
-        # 选择行：工具下拉 + 数量 + 添加
-        cfg_row = BoxLayout(orientation="horizontal", size_hint_y=0.11, spacing=dp(8))
+        # 选择行：工具下拉 + 数量(-/+) + 添加
+        cfg_row = BoxLayout(orientation="horizontal", size_hint_y=0.13, spacing=dp(6))
         self.tool_spinner = Spinner(
             text="选择工具", values=list(TOOL_DICT.values()),
-            size_hint_x=0.5, font_size=FS_BODY,
+            size_hint_x=0.44, font_size=FS_BODY,
             option_cls=CNSpinnerOption, **font_opts())
+        btn_minus = Button(
+            text="－", font_size=FS_NUM, bold=True, size_hint_x=0.13,
+            background_color=(0.35, 0.35, 0.42, 1))
+        btn_minus.bind(on_press=lambda w: self._change_count(-1))
         self.cnt_input = TextInput(
             text="1", input_filter="int", multiline=False,
-            size_hint_x=0.18, halign="center", font_size=FS_BODY,
+            size_hint_x=0.16, halign="center", font_size=FS_NUM,
             hint_text="数量", **font_opts())
+        btn_plus = Button(
+            text="＋", font_size=FS_NUM, bold=True, size_hint_x=0.13,
+            background_color=(0.35, 0.35, 0.42, 1))
+        btn_plus.bind(on_press=lambda w: self._change_count(1))
         btn_add = Button(**font_opts(
-            text="添加", font_size=FS_BODY, size_hint_x=0.32,
+            text="添加", font_size=FS_BODY, bold=True, size_hint_x=0.14,
             background_color=(0.2, 0.5, 0.85, 1)))
         btn_add.bind(on_press=self.on_add_tool)
         cfg_row.add_widget(self.tool_spinner)
+        cfg_row.add_widget(btn_minus)
         cfg_row.add_widget(self.cnt_input)
+        cfg_row.add_widget(btn_plus)
         cfg_row.add_widget(btn_add)
         left_area.add_widget(cfg_row)
         # 已添加清单
@@ -330,12 +342,13 @@ class MainUI(BoxLayout):
         right_area = BoxLayout(orientation="vertical", size_hint=(0.54, 1), spacing=SPACING)
         right_area.add_widget(Label(**font_opts(
             text="清点进度总览", font_size=FS_TITLE, bold=True, size_hint_y=0.1)))
-        self.progress_grid = GridLayout(
-            cols=2, size_hint_y=None, spacing=dp(10),
-            row_default_height=ROW_H_PROG)
+        self.progress_grid = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
         self.progress_grid.bind(minimum_height=self.progress_grid.setter("height"))
         self.progress_map = {}
-        right_area.add_widget(self.progress_grid)
+        # 进度总览放进 ScrollView，工具多时可滑动查看
+        self.progress_scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
+        self.progress_scroll.add_widget(self.progress_grid)
+        right_area.add_widget(self.progress_scroll)
         self.state_label = Label(**font_opts(
             text="正在初始化串口，连接K230设备...",
             font_size=FS_STATUS, bold=True, color=(1, 1, 0.9, 1), size_hint_y=0.2,
@@ -345,6 +358,15 @@ class MainUI(BoxLayout):
         self.add_widget(right_area)
 
     # ---------- 清单增删 ----------
+    def _change_count(self, delta):
+        """+/- 快速调整数量（最少1）"""
+        try:
+            cur = int(self.cnt_input.text.strip()) if self.cnt_input.text.strip() else 1
+        except ValueError:
+            cur = 1
+        cur = max(1, cur + delta)
+        self.cnt_input.text = str(cur)
+
     def on_add_tool(self, instance):
         tool = self.tool_spinner.text
         if tool in (None, "", "选择工具"):
@@ -391,7 +413,7 @@ class MainUI(BoxLayout):
         self.button_map.clear()
         self.count_map.clear()
         for tool, cnt in global_check.check_list.items():
-            row = BoxLayout(orientation="horizontal", size_hint_y=None, height=ROW_H_CHECK, spacing=dp(6))
+            row = BoxLayout(orientation="horizontal", size_hint_y=None, height=ROW_H_CHECK, spacing=dp(8))
             # 工具名按钮：文字自动换行，避免长名溢出到数量标签
             btn = Button(**font_opts(text=tool, font_size=FS_ROW))
             btn.bind(size=lambda w, s: setattr(w, "text_size", (s[0] - dp(8), None)))
@@ -399,10 +421,11 @@ class MainUI(BoxLayout):
             btn.valign = "middle"
             btn.bind(on_press=self.click_tool_btn)
             row.add_widget(btn)
-            cnt_lab = Label(**font_opts(text="×%d" % cnt, font_size=FS_ROW, size_hint_x=0.15))
+            cnt_lab = Label(**font_opts(text="×%d" % cnt, font_size=FS_ROW, size_hint_x=0.14))
             row.add_widget(cnt_lab)
-            del_btn = Button(text="✕", font_size=FS_ROW, size_hint_x=0.12,
-                             background_color=(0.6, 0.15, 0.15, 1))
+            # 删除按钮：加大，醒目易点
+            del_btn = Button(text="✕", font_size=FS_ROW, bold=True, size_hint_x=0.16,
+                             background_color=(0.75, 0.2, 0.2, 1))
             del_btn.bind(on_press=lambda w, t=tool: self.remove_from_checklist(t))
             row.add_widget(del_btn)
             self.button_map[tool] = btn
@@ -413,12 +436,18 @@ class MainUI(BoxLayout):
         self.progress_grid.clear_widgets()
         self.progress_map = {}
         for tool, cnt in global_check.check_list.items():
-            n_lab = Label(**font_opts(text=tool, font_size=FS_ROW, halign="left"))
-            n_lab.bind(size=lambda w, s: setattr(w, "text_size", s))
+            # 每行 = 名称(0.55) + 状态(0.45)，横排不挤压
+            row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                            height=ROW_H_PROG, spacing=dp(6))
+            n_lab = Label(**font_opts(text=tool, font_size=FS_PROG, halign="left"))
+            n_lab.bind(size=lambda w, s: setattr(w, "text_size", (s[0] - dp(4), None)))
+            n_lab.size_hint_x = 0.55
             st_lab = Label(**font_opts(
-                text="待清点(需%d个)" % cnt, font_size=FS_ROW, color=(0.8, 0.8, 0.8, 1)))
-            self.progress_grid.add_widget(n_lab)
-            self.progress_grid.add_widget(st_lab)
+                text="待清点×%d" % cnt, font_size=FS_PROG,
+                color=(0.8, 0.8, 0.8, 1), size_hint_x=0.45))
+            row.add_widget(n_lab)
+            row.add_widget(st_lab)
+            self.progress_grid.add_widget(row)
             self.progress_map[tool] = st_lab
 
     # ---------- 串口初始化（线程安全） ----------
@@ -481,11 +510,11 @@ class MainUI(BoxLayout):
                 st.color = (0.2, 1, 0.3, 1)
                 btn.background_color = (0.15, 0.6, 0.2, 1)
             elif tool == global_check.target_now:
-                st.text = "⏳ 等待识别(需%d个)" % need
+                st.text = "识别中×%d" % need
                 st.color = (1, 0.85, 0.2, 1)
                 btn.background_color = (0.8, 0.7, 0.1, 1)
             else:
-                st.text = "待清点(需%d个)" % need
+                st.text = "待清点×%d" % need
                 st.color = (0.8, 0.8, 0.8, 1)
                 btn.background_color = (0.2, 0.2, 0.2, 1)
 # -------------------------- 应用入口 --------------------------
