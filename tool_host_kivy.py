@@ -659,36 +659,28 @@ class MainUI(BoxLayout):
                 st.color = (1, 0.3, 0.3, 1)   # 未清点：红色
                 btn.background_color = (0.2, 0.2, 0.2, 1)
 
-    # ---------- K230状态全量同步（亮屏/重连补差） ----------
+    # ---------- K230状态全量同步（亮屏/重连/周期心跳补差） ----------
     def apply_status_sync(self, msg):
-        """收到K230 status_sync：以K230当前锁定状态覆盖本地，修复黑屏期间丢失的回传"""
-        k_list = msg.get("list") or {}
+        """收到K230 status_sync（0.2s周期心跳或GET_STATUS）：只同步锁定状态，不重建清单"""
         k_locked = msg.get("locked") or {}
-        new_list = {}
-        for k, v in k_list.items():
-            try:
-                name = TOOL_DICT[int(k)]
-                new_list[name] = int(v)
-            except Exception:
-                continue
         new_finished = set()
         for k in k_locked:
             try:
                 new_finished.add(TOOL_DICT[int(k)])
             except Exception:
                 continue
-        # K230是权威状态：清单与锁定都以其为准
-        global_check.check_list = new_list
+        # 本地清单为准（清单已通过sync_list同步给K230），只更新锁定集合
+        changed = (new_finished != global_check.finished)
         global_check.finished = new_finished
-        global_check.target_now = None
-        global_check.all_complete = bool(new_list) and len(new_finished) == len(new_list)
-        self.rebuild_checklist_rows()
-        self.rebuild_progress()
-        self.update_progress()
-        if global_check.all_complete:
-            refresh_ui_text("✅ 已同步K230：全部工具均已锁定")
-        else:
-            refresh_ui_text("已同步K230状态：%d/%d 种已锁定" % (len(new_finished), len(new_list)))
+        done_all = bool(global_check.check_list) and len(new_finished) == len(global_check.check_list)
+        global_check.all_complete = done_all
+        if done_all:
+            global_check.target_now = None
+        # 仅状态变化时才刷新UI（心跳0.2s一次，避免无谓重绘卡顿）
+        if changed or done_all:
+            self.update_progress()
+        if done_all:
+            refresh_ui_text("✅ 全部工具清点完毕")
 # -------------------------- 应用入口 --------------------------
 class ToolHostApp(App):
     def build(self):

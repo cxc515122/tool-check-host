@@ -64,8 +64,9 @@ LONG_PRESS_MS = 300
 CONF_THRESH = 0.43
 NMS_THRESH = 0.05
 # 业务防抖配置
-ALERT_INTERVAL_MS = 60
+ALERT_INTERVAL_MS = 600
 GC_INTERVAL_FRAME = 20
+STATUS_REPORT_MS = 200   # 状态心跳周期：每200ms回传一次锁定状态给上位机（防黑屏丢失）
 # =====================================================================
 # 全局状态
 class AppState:
@@ -650,6 +651,7 @@ if __name__ == "__main__":
         key_press_start = 0
         key_is_down = False
         frame_cnt = 0
+        last_status_tick = 0
         while True:
             # 1、串口指令处理（行缓冲，按\n拼完整一行再解析）
             raw = uart.read()
@@ -721,6 +723,15 @@ if __name__ == "__main__":
                 # 无论全量/点选，锁定后都回传结果给上位机（上位机据此更新界面/判断完成）
                 for n in newly_locked:
                     uart_json({"status": "detect_success", "matched_tool": TOOL_DICT[n]})
+            # 9.5、状态心跳：每200ms回传一次锁定状态，上位机持续同步（防黑屏/丢事件）
+            now_ms = time.ticks_ms()
+            if now_ms - last_status_tick >= STATUS_REPORT_MS:
+                last_status_tick = now_ms
+                uart_json({
+                    "status": "status_sync",
+                    "locked": {str(k): v for k, v in state.locked_count.items()},
+                    "done_all": all_ok and len(state.standard_tool_count) > 0,
+                })
             # 10、屏幕刷新
             Display.show_image(canvas, 0, 0)
             del img, res, detections
