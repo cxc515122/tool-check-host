@@ -70,15 +70,18 @@ except ImportError:
 # 安卓 USB 串口支持（打包 Android 时才有这两个库；电脑调试自动跳过）
 try:
     import usb4a
+    from usb4a import usb
     from usbserial4a import serial4a
     HAS_ANDROID_USB = True
 except Exception:
     usb4a = None
+    usb = None
     serial4a = None
     HAS_ANDROID_USB = False
 
 import json
 import threading
+import time
 import traceback
 
 from kivy.app import App
@@ -113,11 +116,28 @@ global_check = CheckRecord()
 # -------------------------- 串口底层通信函数 --------------------------
 def open_uart():
     global uart_handle
-    # 安卓：通过 USB Host API 打开 /dev/ttyUSB0（首次需授权）
+    # 安卓：通过 USB Host API 枚举并打开串口设备（usbserial4a 自动匹配 CH340/CP210x/FTDI/CDC）
     if HAS_ANDROID_USB:
         try:
-            uart_handle = serial4a.SerialDevice("/dev/ttyUSB0", BAUD, timeout=0.1)
-            return True, "安卓USB串口连接成功"
+            dev_list = usb.get_usb_device_list()
+            if not dev_list:
+                return False, "未检测到USB设备，请确认K230已通过OTG线连接手机"
+            dev = dev_list[0]
+            device_name = dev.getDeviceName()
+            # 首次连接需要 USB 权限；在后台线程等待用户在主线程弹出的授权框
+            if not usb.has_usb_permission(dev):
+                usb.request_usb_permission(dev)
+                for _ in range(50):   # 最多等 5 秒
+                    time.sleep(0.1)
+                    if usb.has_usb_permission(dev):
+                        break
+                if not usb.has_usb_permission(dev):
+                    return False, "等待USB授权超时，请重新打开App并点击允许"
+            uart_handle = serial4a.get_serial_port(
+                device_name, BAUD, 8, "N", 1, timeout=0.1)
+            if uart_handle.is_open:
+                return True, "安卓USB串口连接成功"
+            return False, "安卓USB串口打开失败：设备被占用或驱动不支持"
         except Exception as err:
             return False, "安卓USB串口打开失败：%s" % err
     # 电脑：pyserial 直接打开 COM 口
@@ -239,6 +259,10 @@ class MainUI(BoxLayout):
         if HAS_ANDROID_USB:
             try:
                 usb4a.setup()
+                # 主动请求第一个USB设备的访问权限，用户点允许后串口即可打开
+                dev_list = usb.get_usb_device_list()
+                if dev_list and not usb.has_usb_permission(dev_list[0]):
+                    usb.request_usb_permission(dev_list[0])
             except Exception:
                 traceback.print_exc()
         # UI 完全就绪后再初始化串口（后台线程只做阻塞打开，不碰Clock）
