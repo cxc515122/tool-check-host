@@ -278,6 +278,25 @@ def _hotplug_detach():
     if app and app.root:
         app.root.state_label.text = "串口状态：USB已拔出，重新插入可自动连接"
 
+# -------------------------- Android 唤醒锁（黑屏保活） --------------------------
+_wake_lock = None
+def acquire_wakelock():
+    """获取Android部分唤醒锁：息屏时CPU不休眠，串口读取线程持续运行不丢数据"""
+    global _wake_lock
+    try:
+        from jnius import autoclass
+        PythonActivity = autoclass("org.kivy.android.PythonActivity")
+        activity = PythonActivity.mActivity
+        Context = autoclass("android.content.Context")
+        PowerManager = autoclass("android.os.PowerManager")
+        pm = activity.getSystemService(Context.POWER_SERVICE)
+        _wake_lock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "toolhost:serial")
+        _wake_lock.acquire()
+        return True
+    except Exception:
+        traceback.print_exc()
+        return False
+
 # -------------------------- K230消息处理 --------------------------
 @mainthread
 def handle_k230_message(msg):
@@ -319,6 +338,10 @@ def handle_k230_message(msg):
         elif status_type == "list_ok":
             # K230已成功同步整份清单（屏幕只显示选择的工具）
             refresh_ui_text("K230清单已同步：屏幕显示 %d 种工具" % msg.get("total", 0))
+        elif status_type == "status_sync":
+            # 亮屏/重连后的全量同步：用K230当前锁定状态覆盖本地（补黑屏期间丢失的回传）
+            if root:
+                root.apply_status_sync(msg)
         elif status_type == "error":
             refresh_ui_text("⚠️ K230返回错误：%s" % msg.get("msg", ""))
     except Exception:
@@ -635,12 +658,48 @@ class MainUI(BoxLayout):
                 st.text = "待清点×%d" % need
                 st.color = (1, 0.3, 0.3, 1)   # 未清点：红色
                 btn.background_color = (0.2, 0.2, 0.2, 1)
+
+    # ---------- K230状态全量同步（亮屏/重连补差） ----------
+    def apply_status_sync(self, msg):
+        """收到K230 status_sync：以K230当前锁定状态覆盖本地，修复黑屏期间丢失的回传"""
+        k_list = msg.get("list") or {}
+        k_locked = msg.get("locked") or {}
+        new_list = {}
+        for k, v in k_list.items():
+            try:
+                name = TOOL_DICT[int(k)]
+                new_list[name] = int(v)
+            except Exception:
+                continue
+        new_finished = set()
+        for k in k_locked:
+            try:
+                new_finished.add(TOOL_DICT[int(k)])
+            except Exception:
+                continue
+        # K230是权威状态：清单与锁定都以其为准
+        global_check.check_list = new_list
+        global_check.finished = new_finished
+        global_check.target_now = None
+        global_check.all_complete = bool(new_list) and len(new_finished) == len(new_list)
+        self.rebuild_checklist_rows()
+        self.rebuild_progress()
+        self.update_progress()
+        if global_check.all_complete:
+            refresh_ui_text("✅ 已同步K230：全部工具均已锁定")
+        else:
+            refresh_ui_text("已同步K230状态：%d/%d 种已锁定" % (len(new_finished), len(new_list)))
 # -------------------------- 应用入口 --------------------------
 class ToolHostApp(App):
     def build(self):
         self.title = "铁路工机具清点上位机"
         try:
-            return MainUI()
+            ui = MainUI()
+            # 安卓：黑屏保活 + 回到前台时主动向K230拉取完整状态（补黑屏期间丢失的回传）
+            if platform == "android":
+                acquire_wakelock()
+                Window.bind(on_resume=self._on_resume)
+            return ui
         except Exception:
             # 构建失败兜底：显示错误信息，而不是黑屏/闪退
             traceback.print_exc()
@@ -655,15 +714,27 @@ class ToolHostApp(App):
             err_box.add_widget(err_text)
             return err_box
 
+    def _on_resume(self, *args):
+        """App回到前台/亮屏：主动拉取K230完整状态，修复黑屏期间未收到的事件"""
+        if HAS_SERIAL:
+            send_cmd_to_k230({"cmd": "GET_STATUS"})
+            refresh_ui_text("回到前台，正在同步K230清点状态...")
+
     def on_stop(self):
         """APP退出时关闭串口释放资源"""
-        global rx_loop_running, uart_handle
+        global rx_loop_running, uart_handle, _wake_lock
         rx_loop_running = False
         if uart_handle and uart_handle.is_open:
             try:
                 uart_handle.close()
             except Exception:
                 pass
+        if _wake_lock is not None:
+            try:
+                _wake_lock.release()
+            except Exception:
+                pass
+            _wake_lock = None
 
 if __name__ == "__main__":
     ToolHostApp().run()
