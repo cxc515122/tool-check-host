@@ -287,7 +287,7 @@ class MainUI(BoxLayout):
 
     # ---------- 左侧：手动配置清点清单 ----------
     def _build_left(self):
-        left_area = BoxLayout(orientation="vertical", size_hint=(0.36, 1), spacing=SPACING)
+        left_area = BoxLayout(orientation="vertical", size_hint=(0.46, 1), spacing=SPACING)
         left_area.add_widget(Label(**font_opts(
             text="配置清点清单", font_size=FS_TITLE, bold=True, size_hint_y=0.07)))
         # 选择行：工具下拉 + 数量 + 添加
@@ -310,7 +310,7 @@ class MainUI(BoxLayout):
         left_area.add_widget(cfg_row)
         # 已添加清单
         left_area.add_widget(Label(**font_opts(
-            text="已选清单（点工具下发识别）", font_size=FS_SECTION, bold=True, size_hint_y=0.06)))
+            text="已选清单（点选下发）", font_size=FS_SECTION, bold=True, size_hint_y=0.06)))
         self.button_map = {}
         self.count_map = {}
         self.checklist_grid = GridLayout(cols=1, size_hint_y=None, spacing=dp(8))
@@ -319,7 +319,7 @@ class MainUI(BoxLayout):
         self.tool_scroll.add_widget(self.checklist_grid)
         left_area.add_widget(self.tool_scroll)
         btn_reset = Button(**font_opts(
-            text="重置全部清点", font_size=FS_BODY, bold=True, size_hint_y=0.12,
+            text="重置全部清点", font_size=FS_BODY, bold=True, size_hint_y=0.15,
             background_color=(0.85, 0.2, 0.2, 1)))
         btn_reset.bind(on_press=self.reset_all_record)
         left_area.add_widget(btn_reset)
@@ -327,7 +327,7 @@ class MainUI(BoxLayout):
 
     # ---------- 右侧：清点进度总览（只显示已添加工具） ----------
     def _build_right(self):
-        right_area = BoxLayout(orientation="vertical", size_hint=(0.64, 1), spacing=SPACING)
+        right_area = BoxLayout(orientation="vertical", size_hint=(0.54, 1), spacing=SPACING)
         right_area.add_widget(Label(**font_opts(
             text="清点进度总览", font_size=FS_TITLE, bold=True, size_hint_y=0.1)))
         self.progress_grid = GridLayout(
@@ -338,7 +338,9 @@ class MainUI(BoxLayout):
         right_area.add_widget(self.progress_grid)
         self.state_label = Label(**font_opts(
             text="正在初始化串口，连接K230设备...",
-            font_size=FS_STATUS, bold=True, color=(1, 1, 0.9, 1), size_hint_y=0.12))
+            font_size=FS_STATUS, bold=True, color=(1, 1, 0.9, 1), size_hint_y=0.2,
+            halign="center", valign="middle"))
+        self.state_label.bind(size=lambda w, s: setattr(w, "text_size", s))
         right_area.add_widget(self.state_label)
         self.add_widget(right_area)
 
@@ -390,12 +392,16 @@ class MainUI(BoxLayout):
         self.count_map.clear()
         for tool, cnt in global_check.check_list.items():
             row = BoxLayout(orientation="horizontal", size_hint_y=None, height=ROW_H_CHECK, spacing=dp(6))
+            # 工具名按钮：文字自动换行，避免长名溢出到数量标签
             btn = Button(**font_opts(text=tool, font_size=FS_ROW))
+            btn.bind(size=lambda w, s: setattr(w, "text_size", (s[0] - dp(8), None)))
+            btn.halign = "center"
+            btn.valign = "middle"
             btn.bind(on_press=self.click_tool_btn)
             row.add_widget(btn)
-            cnt_lab = Label(**font_opts(text="×%d" % cnt, font_size=FS_ROW, size_hint_x=0.16))
+            cnt_lab = Label(**font_opts(text="×%d" % cnt, font_size=FS_ROW, size_hint_x=0.15))
             row.add_widget(cnt_lab)
-            del_btn = Button(text="✕", font_size=FS_ROW, size_hint_x=0.13,
+            del_btn = Button(text="✕", font_size=FS_ROW, size_hint_x=0.12,
                              background_color=(0.6, 0.15, 0.15, 1))
             del_btn.bind(on_press=lambda w, t=tool: self.remove_from_checklist(t))
             row.add_widget(del_btn)
